@@ -1,84 +1,295 @@
 class Game {
     constructor() {
+        // DOM Elements
         this.sleigh = document.getElementById('sleigh');
         this.gameArea = document.getElementById('game-area');
         this.scoreElement = document.getElementById('score');
         this.livesElement = document.getElementById('lives');
-        this.startScreen = document.getElementById('start-screen');
+        this.startScreen = document.getElementById('start-panel');
         this.gameOverScreen = document.getElementById('game-over');
-        this.finalScoreElement = document.getElementById('final-score');
+        this.startButton = document.getElementById('start-button');
+        this.restartButton = document.getElementById('restart-button');
         
+        // Game state
         this.score = 0;
         this.lives = 3;
-        this.speed = 2;
         this.isGameRunning = false;
+        this.buildings = [];
+        this.buildingSpeed = 2;
         this.presentInterval = null;
-        this.snowflakeInterval = null;
-        this.sleighDirection = 1; // 1 for right, -1 for left
-        this.sleighSpeed = 3;
-        this.sleighPosition = 0;
-        this.buildings = [];
+        this.buildingInterval = null;
         
-        this.init();
+        // Player movement
+        this.playerX = 350;
+        this.playerY = 300;
+        this.playerSpeed = 8;
+        this.activeKeys = new Set();
+
+        // High scores
+        this.highScores = this.loadHighScores();
+        
+        // Event listeners
+        this.setupControls();
+        this.startButton.addEventListener('click', () => this.startGame());
+        this.restartButton.addEventListener('click', () => this.startGame());
+        document.getElementById('save-score').addEventListener('click', () => this.saveHighScore());
+        
+        // Add snowflake creation
+        this.createSnowflakes();
+
+        // Add obstacle properties
+        this.obstacles = [];
+        this.obstacleInterval = null;
+        this.baseObstacleInterval = 3000; // Start with 3 seconds
+        this.minObstacleInterval = 1000;  // Minimum 1 second between obstacles
+        this.obstacleSpeed = 3;
+
+        // Mobile touch variables
+        this.touchStartX = null;
+        this.touchStartY = null;
+        this.isTouching = false;
+        
+        // Add mobile detection
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        this.setupMobileControls();
     }
 
-    init() {
-        document.getElementById('start-button').addEventListener('click', () => this.startGame());
-        document.getElementById('restart-button').addEventListener('click', () => this.startGame());
-        
-        this.createBuildings();
+    setupControls() {
+        document.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                this.activeKeys.add(e.key);
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            this.activeKeys.delete(e.key);
+        });
     }
 
-    createBuildings() {
-        this.buildings.forEach(building => building.remove());
-        this.buildings = [];
+    setupMobileControls() {
+        if (!this.isMobile) return;
 
-        const buildingCount = 4;
-        const gameWidth = this.gameArea.offsetWidth;
-        const minWidth = 60;
-        const maxWidth = 100;
-        const minHeight = 100;
-        const maxHeight = 250;
-        const spacing = gameWidth / buildingCount;
-
-        for (let i = 0; i < buildingCount; i++) {
-            const building = document.createElement('div');
-            building.className = 'building';
+        // Add touch controls
+        this.gameArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            this.touchStartX = touch.clientX;
+            this.touchStartY = touch.clientY;
+            this.isTouching = true;
             
-            const width = Math.random() * (maxWidth - minWidth) + minWidth;
-            const height = Math.random() * (maxHeight - minHeight) + minHeight;
-            const left = i * spacing + (spacing - width) / 2;
+            // Show touch indicator
+            this.showTouchIndicator(touch.clientX, touch.clientY);
+        });
 
-            building.style.width = `${width}px`;
-            building.style.height = `${height}px`;
-            building.style.left = `${left}px`;
+        this.gameArea.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!this.isGameRunning || !this.isTouching) return;
 
-            this.gameArea.appendChild(building);
-            this.buildings.push(building);
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - this.touchStartX;
+            const deltaY = touch.clientY - this.touchStartY;
+
+            // Update position with smooth movement
+            this.playerX = Math.max(0, Math.min(
+                this.gameArea.offsetWidth - 100,
+                this.playerX + deltaX * 1.5
+            ));
+            this.playerY = Math.max(0, Math.min(
+                this.gameArea.offsetHeight - 60,
+                this.playerY + deltaY * 1.5
+            ));
+
+            // Update touch start positions
+            this.touchStartX = touch.clientX;
+            this.touchStartY = touch.clientY;
+
+            // Update touch indicator
+            this.updateTouchIndicator(touch.clientX, touch.clientY);
+        });
+
+        this.gameArea.addEventListener('touchend', () => {
+            this.isTouching = false;
+            this.hideTouchIndicator();
+        });
+
+        // Add swipe detection for quick movements
+        let swipeStartX = 0;
+        let swipeStartY = 0;
+        let swipeStartTime = 0;
+
+        this.gameArea.addEventListener('touchstart', (e) => {
+            swipeStartX = e.touches[0].clientX;
+            swipeStartY = e.touches[0].clientY;
+            swipeStartTime = Date.now();
+        });
+
+        this.gameArea.addEventListener('touchend', (e) => {
+            const deltaTime = Date.now() - swipeStartTime;
+            const deltaX = e.changedTouches[0].clientX - swipeStartX;
+            const deltaY = e.changedTouches[0].clientY - swipeStartY;
+
+            // Detect quick swipes
+            if (deltaTime < 200) {
+                const swipeSpeed = 30;
+                if (Math.abs(deltaX) > 50) {
+                    this.playerX += deltaX > 0 ? swipeSpeed : -swipeSpeed;
+                }
+                if (Math.abs(deltaY) > 50) {
+                    this.playerY += deltaY > 0 ? swipeSpeed : -swipeSpeed;
+                }
+            }
+        });
+    }
+
+    showTouchIndicator(x, y) {
+        if (!this.touchIndicator) {
+            this.touchIndicator = document.createElement('div');
+            this.touchIndicator.className = 'touch-indicator';
+            document.body.appendChild(this.touchIndicator);
+        }
+        this.touchIndicator.style.display = 'block';
+        this.updateTouchIndicator(x, y);
+    }
+
+    updateTouchIndicator(x, y) {
+        if (this.touchIndicator) {
+            this.touchIndicator.style.left = `${x}px`;
+            this.touchIndicator.style.top = `${y}px`;
         }
     }
 
-    moveSleigh() {
+    hideTouchIndicator() {
+        if (this.touchIndicator) {
+            this.touchIndicator.style.display = 'none';
+        }
+    }
+
+    movePlayer() {
         if (!this.isGameRunning) return;
 
-        this.sleighPosition += this.sleighSpeed * this.sleighDirection;
-        const maxX = this.gameArea.offsetWidth - this.sleigh.offsetWidth;
-
-        if (this.sleighPosition >= maxX) {
-            this.sleighDirection = -1;
-            this.sleighPosition = maxX;
-        } else if (this.sleighPosition <= 0) {
-            this.sleighDirection = 1;
-            this.sleighPosition = 0;
+        let moved = false;
+        
+        if (this.activeKeys.has('ArrowLeft')) {
+            this.playerX = Math.max(0, this.playerX - this.playerSpeed);
+            moved = true;
+            this.sleigh.style.transform = 'rotate(-5deg)';
+        } else if (this.activeKeys.has('ArrowRight')) {
+            this.playerX = Math.min(this.gameArea.offsetWidth - 100, this.playerX + this.playerSpeed);
+            moved = true;
+            this.sleigh.style.transform = 'rotate(5deg)';
+        }
+        
+        if (this.activeKeys.has('ArrowUp')) {
+            this.playerY = Math.max(0, this.playerY - this.playerSpeed);
+            moved = true;
+        } else if (this.activeKeys.has('ArrowDown')) {
+            this.playerY = Math.min(this.gameArea.offsetHeight - 60, this.playerY + this.playerSpeed);
+            moved = true;
         }
 
-        this.sleigh.style.left = `${this.sleighPosition}px`;
+        // Reset rotation when not moving
+        if (!moved) {
+            this.sleigh.style.transform = 'rotate(0deg)';
+        }
+
+        this.sleigh.style.left = `${this.playerX}px`;
+        this.sleigh.style.top = `${this.playerY}px`;
+
+        // Add rocking animation class when moving
+        if (moved) {
+            this.sleigh.classList.add('rocking');
+        } else {
+            this.sleigh.classList.remove('rocking');
+        }
 
         if (this.checkBuildingCollision()) {
             this.gameOver();
+            return;
         }
 
-        requestAnimationFrame(() => this.moveSleigh());
+        requestAnimationFrame(() => this.movePlayer());
+    }
+
+    createPresent() {
+        const present = document.createElement('div');
+        present.className = 'present';
+        present.innerHTML = '🎁';
+        
+        const position = Math.random() * (this.gameArea.offsetWidth - 40);
+        present.style.left = `${position}px`;
+        present.style.top = '0';
+        
+        this.gameArea.appendChild(present);
+
+        let presentY = 0;
+        const fall = setInterval(() => {
+            if (!this.isGameRunning) {
+                clearInterval(fall);
+                present.remove();
+                return;
+            }
+
+            presentY += 3;
+            present.style.top = `${presentY}px`;
+
+            if (this.checkCollision(present)) {
+                clearInterval(fall);
+                present.remove();
+                this.score++;
+                this.scoreElement.textContent = this.score;
+            } else if (presentY > this.gameArea.offsetHeight) {
+                clearInterval(fall);
+                present.remove();
+                this.lives--;
+                this.livesElement.textContent = this.lives;
+                
+                if (this.lives <= 0) {
+                    this.gameOver();
+                }
+            }
+        }, 16);
+    }
+
+    createBuilding() {
+        const building = document.createElement('div');
+        building.className = 'building';
+        
+        const height = Math.random() * 150 + 100;
+        building.style.width = '80px';
+        building.style.height = `${height}px`;
+        building.style.left = `${this.gameArea.offsetWidth}px`;
+
+        this.gameArea.appendChild(building);
+        this.buildings.push(building);
+    }
+
+    updateBuildings() {
+        if (!this.isGameRunning) return;
+
+        this.buildings.forEach((building, index) => {
+            let currentLeft = parseFloat(building.style.left);
+            currentLeft -= this.buildingSpeed;
+            building.style.left = `${currentLeft}px`;
+
+            if (currentLeft < -100) {
+                building.remove();
+                this.buildings.splice(index, 1);
+            }
+        });
+
+        requestAnimationFrame(() => this.updateBuildings());
+    }
+
+    checkCollision(present) {
+        const sleighRect = this.sleigh.getBoundingClientRect();
+        const presentRect = present.getBoundingClientRect();
+
+        return !(sleighRect.right < presentRect.left || 
+                sleighRect.left > presentRect.right || 
+                sleighRect.bottom < presentRect.top || 
+                sleighRect.top > presentRect.bottom);
     }
 
     checkBuildingCollision() {
@@ -94,111 +305,343 @@ class Game {
     }
 
     startGame() {
+        // Reset game state
         this.score = 0;
         this.lives = 3;
-        this.speed = 2;
-        this.isGameRunning = true;
         this.scoreElement.textContent = this.score;
         this.livesElement.textContent = this.lives;
         
+        // Hide menus
         this.startScreen.classList.add('hidden');
         this.gameOverScreen.classList.add('hidden');
         
-        this.clearIntervals();
-        this.startDropping();
-        this.createSnowfall();
-        this.sleighPosition = 0;
-        this.sleighDirection = 1;
-        this.sleigh.style.left = '0px';
+        // Set initial position for entrance animation
+        this.playerX = -100;
+        this.playerY = -100;
+        this.sleigh.style.left = `${this.playerX}px`;
+        this.sleigh.style.top = `${this.playerY}px`;
         
-        this.createBuildings();
-        this.moveSleigh();
+        // Add entrance animation class
+        this.sleigh.classList.add('entrance-animation');
+        
+        // Start game after animation
+        setTimeout(() => {
+            this.sleigh.classList.remove('entrance-animation');
+            this.isGameRunning = true;
+            this.playerX = 350;
+            this.playerY = 300;
+            this.movePlayer();
+            this.startGameElements();
+        }, 2000); // Match this with animation duration
+        
+        // Add mobile-specific adjustments
+        if (this.isMobile) {
+            this.playerSpeed *= 1.5; // Increase speed for mobile
+            this.showMobileControls();
+        }
     }
 
-    createPresent() {
-        const present = document.createElement('div');
-        present.className = 'present';
+    startGameElements() {
+        // Clear existing elements
+        this.buildings.forEach(building => building.remove());
+        this.buildings = [];
+        this.obstacles.forEach(obstacle => obstacle.remove());
+        this.obstacles = [];
+        Array.from(document.getElementsByClassName('present')).forEach(present => present.remove());
+        
+        // Start game loops
+        if (this.presentInterval) clearInterval(this.presentInterval);
+        this.presentInterval = setInterval(() => {
+            if (this.isGameRunning) this.createPresent();
+        }, 2000);
+        
+        if (this.buildingInterval) clearInterval(this.buildingInterval);
+        this.buildingInterval = setInterval(() => {
+            if (this.isGameRunning) this.createBuilding();
+        }, 2000);
+        
+        this.updateObstacleInterval();
+        this.updateBuildings();
+    }
+
+    gameOver() {
+        this.isGameRunning = false;
+        
+        // Clear intervals
+        if (this.presentInterval) clearInterval(this.presentInterval);
+        if (this.buildingInterval) clearInterval(this.buildingInterval);
+        if (this.obstacleInterval) clearInterval(this.obstacleInterval);
+        
+        // Create explosion effect
+        this.createExplosion(this.playerX, this.playerY);
+        
+        // Hide sleigh
+        this.sleigh.style.visibility = 'hidden';
+        
+        // Show game over screen after explosion
+        setTimeout(() => {
+            document.getElementById('final-score').textContent = this.score;
+            this.gameOverScreen.classList.remove('hidden');
+        }, 1500);
+        
+        // Add flash effect
+        this.createFlashEffect();
+        
+        // Create explosion after flash
+        setTimeout(() => {
+            this.createExplosion(this.playerX + 50, this.playerY + 30);
+        }, 100);
+    }
+
+    loadHighScores() {
+        const scores = localStorage.getItem('santaHighScores');
+        return scores ? JSON.parse(scores) : [];
+    }
+
+    saveHighScore() {
+        const name = document.getElementById('player-name').value.trim() || 'Anonymous';
+        const newScore = { name, score: this.score };
+        
+        this.highScores.push(newScore);
+        this.highScores.sort((a, b) => b.score - a.score);
+        this.highScores = this.highScores.slice(0, 5);
+        
+        localStorage.setItem('santaHighScores', JSON.stringify(this.highScores));
+        this.updateHighScoresList();
+        
+        this.gameOverScreen.classList.add('hidden');
+        this.startScreen.classList.remove('hidden');
+    }
+
+    updateHighScoresList() {
+        const highScoresList = document.getElementById('highScoresList');
+        highScoresList.innerHTML = '';
+        
+        this.highScores.forEach((score, index) => {
+            const scoreElement = document.createElement('div');
+            scoreElement.className = 'score-item';
+            scoreElement.innerHTML = `
+                <span>${index + 1}. ${score.name}</span>
+                <span>${score.score}</span>
+            `;
+            highScoresList.appendChild(scoreElement);
+        });
+    }
+
+    createSnowflakes() {
+        const snowflakes = ['❄', '❅', '❆'];
+        const gameContainer = document.querySelector('.game-container');
+        
+        setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                const snowflake = document.createElement('div');
+                snowflake.className = 'snowflake';
+                snowflake.innerHTML = snowflakes[Math.floor(Math.random() * snowflakes.length)];
+                
+                // Random starting position
+                snowflake.style.left = `${Math.random() * 100}%`;
+                
+                // Random size
+                const size = Math.random() * 15 + 10;
+                snowflake.style.fontSize = `${size}px`;
+                
+                // Random duration
+                const duration = Math.random() * 3 + 5;
+                snowflake.style.animationDuration = `${duration}s`;
+                
+                // Random horizontal drift
+                const drift = Math.random() * 50 - 25;
+                snowflake.style.animationName = `snowfall-${Math.round(drift)}`;
+                
+                gameContainer.appendChild(snowflake);
+                
+                // Remove snowflake after animation
+                setTimeout(() => {
+                    snowflake.remove();
+                }, duration * 1000);
+            }
+        }, 200);
+    }
+
+    createObstacle() {
+        const obstacle = document.createElement('div');
+        obstacle.className = 'obstacle';
+        obstacle.innerHTML = '🎄';
+        
+        // Random position from top
         const position = Math.random() * (this.gameArea.offsetWidth - 40);
-        present.style.left = `${position}px`;
-        present.style.top = '0';
-        this.gameArea.appendChild(present);
+        obstacle.style.left = `${position}px`;
+        obstacle.style.top = '0';
+        
+        this.gameArea.appendChild(obstacle);
+        this.obstacles.push(obstacle);
 
+        let obstacleY = 0;
         const fall = setInterval(() => {
-            const top = present.offsetTop + this.speed;
-            present.style.top = `${top}px`;
+            if (!this.isGameRunning) {
+                clearInterval(fall);
+                obstacle.remove();
+                return;
+            }
 
-            if (this.checkCollision(present)) {
-                this.gameArea.removeChild(present);
+            obstacleY += this.obstacleSpeed + (this.score * 0.1); // Increase speed with score
+            obstacle.style.top = `${obstacleY}px`;
+
+            // Check collision with sleigh
+            if (this.checkCollision(obstacle)) {
                 clearInterval(fall);
-                this.score++;
-                this.scoreElement.textContent = this.score;
-                this.speed += 0.1;
-            } else if (top > this.gameArea.offsetHeight) {
-                this.gameArea.removeChild(present);
-                clearInterval(fall);
+                obstacle.remove();
                 this.lives--;
                 this.livesElement.textContent = this.lives;
                 
                 if (this.lives <= 0) {
                     this.gameOver();
                 }
+            } else if (obstacleY > this.gameArea.offsetHeight) {
+                clearInterval(fall);
+                obstacle.remove();
+                const index = this.obstacles.indexOf(obstacle);
+                if (index > -1) {
+                    this.obstacles.splice(index, 1);
+                }
             }
         }, 16);
     }
 
-    createSnowfall() {
-        this.snowflakeInterval = setInterval(() => {
-            const snowflake = document.createElement('div');
-            snowflake.className = 'snowflake';
-            snowflake.textContent = '❄';
-            snowflake.style.left = `${Math.random() * 100}%`;
-            snowflake.style.animationDuration = `${Math.random() * 3 + 2}s`;
-            this.gameArea.appendChild(snowflake);
+    updateObstacleInterval() {
+        if (this.obstacleInterval) {
+            clearInterval(this.obstacleInterval);
+        }
 
-            setTimeout(() => {
-                this.gameArea.removeChild(snowflake);
-            }, 5000);
-        }, 100);
+        // Decrease interval as score increases
+        const newInterval = Math.max(
+            this.minObstacleInterval,
+            this.baseObstacleInterval - (this.score * 100)
+        );
+
+        this.obstacleInterval = setInterval(() => {
+            if (this.isGameRunning) {
+                this.createObstacle();
+            }
+        }, newInterval);
     }
 
-    checkCollision(present) {
-        const presentRect = present.getBoundingClientRect();
-        const sleighRect = this.sleigh.getBoundingClientRect();
-
-        return !(presentRect.right < sleighRect.left || 
-                presentRect.left > sleighRect.right || 
-                presentRect.bottom < sleighRect.top || 
-                presentRect.top > sleighRect.bottom);
+    updateScore() {
+        this.score++;
+        this.scoreElement.textContent = this.score;
+        // Update obstacle interval when score changes
+        this.updateObstacleInterval();
     }
 
-    startDropping() {
-        this.presentInterval = setInterval(() => {
-            this.createPresent();
-        }, 2000);
-    }
-
-    clearIntervals() {
-        if (this.presentInterval) clearInterval(this.presentInterval);
-        if (this.snowflakeInterval) clearInterval(this.snowflakeInterval);
-        const presents = document.querySelectorAll('.present');
-        presents.forEach(present => this.gameArea.removeChild(present));
-    }
-
-    gameOver() {
-        this.isGameRunning = false;
-        this.clearIntervals();
-        this.finalScoreElement.textContent = this.score;
-        this.gameOverScreen.classList.remove('hidden');
+    createSnowBurst(x, y) {
+        const burst = document.createElement('div');
+        burst.className = 'snow-burst';
+        burst.style.left = `${x}px`;
+        burst.style.top = `${y}px`;
         
+        // Add multiple snowflakes to the burst
+        for (let i = 0; i < 8; i++) {
+            const snowflake = document.createElement('span');
+            snowflake.textContent = '❄';
+            snowflake.style.position = 'absolute';
+            snowflake.style.transform = `rotate(${i * 45}deg) translate(20px)`;
+            burst.appendChild(snowflake);
+        }
+        
+        this.gameArea.appendChild(burst);
+        
+        // Remove after animation
+        setTimeout(() => burst.remove(), 1000);
+    }
+
+    createExplosion(x, y) {
+        // Create main explosion container
         const explosion = document.createElement('div');
         explosion.className = 'explosion';
-        explosion.style.left = this.sleigh.style.left;
-        explosion.style.top = this.sleigh.style.top;
+        explosion.style.left = `${x}px`;
+        explosion.style.top = `${y}px`;
         this.gameArea.appendChild(explosion);
+
+        // Add particles
+        const particles = ['🎄', '🎁', '❄️', '✨', '💫', '🎅'];
+        for (let i = 0; i < 20; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'explosion-particle';
+            particle.innerHTML = particles[Math.floor(Math.random() * particles.length)];
+            
+            // Random angle and distance
+            const angle = (Math.random() * 360) * (Math.PI / 180);
+            const distance = Math.random() * 100 + 50;
+            
+            // Set random direction and speed
+            particle.style.setProperty('--angle', angle + 'rad');
+            particle.style.setProperty('--distance', distance + 'px');
+            
+            explosion.appendChild(particle);
+        }
+
+        // Create shockwave effect
+        const shockwave = document.createElement('div');
+        shockwave.className = 'shockwave';
+        explosion.appendChild(shockwave);
+
+        // Cleanup after animation
+        setTimeout(() => {
+            explosion.remove();
+        }, 1500);
+    }
+
+    createFlashEffect() {
+        const flash = document.createElement('div');
+        flash.className = 'flash';
+        this.gameArea.appendChild(flash);
         
-        setTimeout(() => explosion.remove(), 1000);
+        // Remove after animation
+        setTimeout(() => flash.remove(), 300);
+    }
+
+    showMobileControls() {
+        if (!this.mobileControls) {
+            this.mobileControls = document.createElement('div');
+            this.mobileControls.className = 'mobile-controls';
+            this.mobileControls.innerHTML = `
+                <div class="touch-hint">Drag to move Santa</div>
+            `;
+            this.gameArea.appendChild(this.mobileControls);
+        }
     }
 }
 
-// Initialize the game
-const game = new Game(); 
+// Generate unique snowfall animations for different drift patterns
+function generateSnowfallKeyframes() {
+    const style = document.createElement('style');
+    for (let i = -25; i <= 25; i += 5) {
+        const keyframes = `
+            @keyframes snowfall-${i} {
+                0% {
+                    transform: translateY(-100vh) translateX(0);
+                    opacity: 0;
+                }
+                10% {
+                    opacity: 1;
+                }
+                90% {
+                    opacity: 1;
+                }
+                100% {
+                    transform: translateY(100vh) translateX(${i}vw);
+                    opacity: 0;
+                }
+            }
+        `;
+        style.appendChild(document.createTextNode(keyframes));
+    }
+    document.head.appendChild(style);
+}
+
+// Initialize game when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    generateSnowfallKeyframes();
+    const game = new Game();
+    game.updateHighScoresList();
+}); 

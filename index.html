@@ -8,21 +8,42 @@
 </head>
 <body>
     <div class="game-container">
+        <div id="start-panel" class="panel">
+            <div class="logo">🎅 Santa's Sleigh</div>
+            <div class="high-scores">
+                <h2>High Scores</h2>
+                <div id="highScoresList">
+                    <!-- High scores will be inserted here -->
+                </div>
+            </div>
+            <button id="start-button" class="glow-button">Play Game</button>
+            <div class="controls-info">
+                <p>🎮 Use Arrow Keys to Move</p>
+                <p>📱 Touch and Drag on Mobile</p>
+            </div>
+        </div>
+
         <div class="score-board">
             <span>Score: <span id="score">0</span></span>
+            <span>Speed: <span id="speed-level">0</span></span>
             <span>Lives: <span id="lives">3</span></span>
         </div>
+
         <div id="game-area">
             <div id="sleigh"></div>
         </div>
-        <div id="start-screen">
-            <h1>Santa's Sleigh Catch</h1>
-            <button id="start-button">Start Game</button>
-        </div>
-        <div id="game-over" class="hidden">
+
+        <div id="game-over" class="panel hidden">
             <h2>Game Over!</h2>
-            <p>Final Score: <span id="final-score">0</span></p>
-            <button id="restart-button">Play Again</button>
+            <div class="score-display">
+                <span>Final Score: <span id="final-score">0</span></span>
+            </div>
+            <input type="text" 
+                   id="player-name" 
+                   maxlength="10" 
+                   placeholder="Enter your nickname">
+            <button id="save-score" class="glow-button">Save Score</button>
+            <button id="restart-button" class="glow-button">Play Again</button>
         </div>
     </div>
     <script src="game.js"></script>
