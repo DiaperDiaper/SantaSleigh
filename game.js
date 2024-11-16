@@ -53,6 +53,14 @@ class Game {
         this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
         this.setupMobileControls();
+
+        // Special present types with different values
+        this.specialPresents = [
+            { emoji: '🎄', points: 3 },    // Christmas tree: 3 points
+            { emoji: '⭐', points: 5 },     // Star: 5 points
+            { emoji: '🦌', points: 10 }     // Reindeer: 10 points
+        ];
+        this.specialPresentChance = 0.15;   // 15% chance for special present
     }
 
     setupControls() {
@@ -212,10 +220,22 @@ class Game {
         requestAnimationFrame(() => this.movePlayer());
     }
 
-    createPresent() {
+    createPresent(isSpecial = false) {
         const present = document.createElement('div');
         present.className = 'present';
-        present.innerHTML = '🎁';
+        
+        let points = 1;
+        if (isSpecial) {
+            const specialPresent = this.specialPresents[
+                Math.floor(Math.random() * this.specialPresents.length)
+            ];
+            present.innerHTML = specialPresent.emoji;
+            points = specialPresent.points;
+            present.classList.add('special-present');
+            present.dataset.points = points;
+        } else {
+            present.innerHTML = '🎁';
+        }
         
         const position = Math.random() * (this.gameArea.offsetWidth - 40);
         present.style.left = `${position}px`;
@@ -231,14 +251,25 @@ class Game {
                 return;
             }
 
-            presentY += 3;
+            // Special presents fall slower
+            presentY += isSpecial ? 2 : 3;
             present.style.top = `${presentY}px`;
 
             if (this.checkCollision(present)) {
                 clearInterval(fall);
                 present.remove();
-                this.score++;
+                
+                this.score += points;
                 this.scoreElement.textContent = this.score;
+                
+                // Show festive score popup
+                this.showFestiveScorePopup(points, position, presentY);
+                
+                // Special collection effect
+                if (isSpecial) {
+                    this.createFestiveEffect(position, presentY, points);
+                }
+                
             } else if (presentY > this.gameArea.offsetHeight) {
                 clearInterval(fall);
                 present.remove();
@@ -250,6 +281,41 @@ class Game {
                 }
             }
         }, 16);
+    }
+
+    showFestiveScorePopup(points, x, y) {
+        const popup = document.createElement('div');
+        popup.className = 'score-popup';
+        // Add festive emojis based on points
+        const festiveEmoji = points >= 10 ? '🎄✨' : 
+                           points >= 5 ? '⭐' : 
+                           points >= 3 ? '🎄' : '🎁';
+        popup.innerHTML = `+${points} ${festiveEmoji}`;
+        popup.style.left = `${x}px`;
+        popup.style.top = `${y}px`;
+        this.gameArea.appendChild(popup);
+
+        setTimeout(() => popup.remove(), 1000);
+    }
+
+    createFestiveEffect(x, y, points) {
+        const effect = document.createElement('div');
+        effect.className = 'festive-effect';
+        effect.style.left = `${x}px`;
+        effect.style.top = `${y}px`;
+        
+        // Add festive particles
+        const particles = ['❄', '✨', '🎄', '⭐'];
+        for (let i = 0; i < 8; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'festive-particle';
+            particle.innerHTML = particles[Math.floor(Math.random() * particles.length)];
+            particle.style.transform = `rotate(${i * 45}deg) translate(30px)`;
+            effect.appendChild(particle);
+        }
+        
+        this.gameArea.appendChild(effect);
+        setTimeout(() => effect.remove(), 1000);
     }
 
     createBuilding() {
@@ -308,8 +374,13 @@ class Game {
         // Reset game state
         this.score = 0;
         this.lives = 3;
+        this.isGameRunning = true;
         this.scoreElement.textContent = this.score;
         this.livesElement.textContent = this.lives;
+        
+        // Make sure sleigh is visible
+        this.sleigh.style.visibility = 'visible';
+        this.sleigh.style.display = 'block';
         
         // Hide menus
         this.startScreen.classList.add('hidden');
@@ -321,24 +392,17 @@ class Game {
         this.sleigh.style.left = `${this.playerX}px`;
         this.sleigh.style.top = `${this.playerY}px`;
         
-        // Add entrance animation class
+        // Add entrance animation
         this.sleigh.classList.add('entrance-animation');
         
         // Start game after animation
         setTimeout(() => {
             this.sleigh.classList.remove('entrance-animation');
-            this.isGameRunning = true;
             this.playerX = 350;
             this.playerY = 300;
             this.movePlayer();
             this.startGameElements();
-        }, 2000); // Match this with animation duration
-        
-        // Add mobile-specific adjustments
-        if (this.isMobile) {
-            this.playerSpeed *= 1.5; // Increase speed for mobile
-            this.showMobileControls();
-        }
+        }, 2000);
     }
 
     startGameElements() {
@@ -375,7 +439,7 @@ class Game {
         // Create explosion effect
         this.createExplosion(this.playerX, this.playerY);
         
-        // Hide sleigh
+        // Hide sleigh temporarily
         this.sleigh.style.visibility = 'hidden';
         
         // Show game over screen after explosion
@@ -609,6 +673,22 @@ class Game {
             `;
             this.gameArea.appendChild(this.mobileControls);
         }
+    }
+
+    restartGame() {
+        // Clear all existing game elements
+        this.buildings.forEach(building => building.remove());
+        this.buildings = [];
+        Array.from(document.getElementsByClassName('present')).forEach(present => present.remove());
+        Array.from(document.getElementsByClassName('obstacle')).forEach(obstacle => obstacle.remove());
+        
+        // Reset sleigh
+        this.sleigh.style.visibility = 'visible';
+        this.sleigh.style.display = 'block';
+        this.sleigh.classList.remove('entrance-animation');
+        
+        // Start new game
+        this.startGame();
     }
 }
 

@@ -90,6 +90,8 @@ body::before {
     position: absolute;
     background: url('sleigh.png') no-repeat center/contain;
     z-index: 100;
+    visibility: visible;
+    display: block;
     animation: rockSleigh 2s infinite ease-in-out;
     transform-origin: center bottom;
 }
@@ -575,6 +577,8 @@ button:hover {
 /* Entrance animation */
 .entrance-animation {
     animation: slideIn 2s ease-out forwards;
+    visibility: visible !important;
+    display: block !important;
     z-index: 100;
 }
 
@@ -841,5 +845,86 @@ button:hover {
     .mobile-controls {
         display: none;
     }
+}
+
+/* Special present styles */
+.special-present {
+    font-size: 40px !important;
+    filter: drop-shadow(0 0 10px #ff4444);
+    animation: specialBounce 1s infinite alternate ease-in-out,
+              festiveGlow 1.5s infinite alternate;
+}
+
+@keyframes specialBounce {
+    from { transform: scale(1) rotate(-5deg); }
+    to { transform: scale(1.2) rotate(5deg); }
+}
+
+@keyframes festiveGlow {
+    from { filter: drop-shadow(0 0 5px #ff4444); }
+    to { filter: drop-shadow(0 0 15px #ff4444); }
+}
+
+/* Score popup */
+.score-popup {
+    position: absolute;
+    color: #ff4444;
+    font-size: 24px;
+    font-weight: bold;
+    text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+    pointer-events: none;
+    animation: festiveFloat 1s ease-out forwards;
+    z-index: 1000;
+}
+
+@keyframes festiveFloat {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(-30px) scale(1.2);
+    }
+    100% {
+        transform: translateY(-60px) scale(1);
+        opacity: 0;
+    }
+}
+
+/* Festive effect particles */
+.festive-effect {
+    position: absolute;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+.festive-particle {
+    position: absolute;
+    font-size: 20px;
+    animation: festiveParticle 1s ease-out forwards;
+}
+
+@keyframes festiveParticle {
+    0% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(0) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+/* Special present types */
+.special-present[data-points="3"] {
+    color: #2ecc71; /* Green for Christmas tree */
+}
+
+.special-present[data-points="5"] {
+    color: #f1c40f; /* Gold for star */
+}
+
+.special-present[data-points="10"] {
+    color: #e74c3c; /* Red for reindeer */
 }
   
